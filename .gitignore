@@ -1,0 +1,28 @@
+# Environments
+.venv/
+venv/
+env/
+.env
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Data and Checkpoints
+data/
+pretrained/
+*.pth
+*.pt
+*.ckpt
+
+# Project specifics
+eval_results/
+logs/

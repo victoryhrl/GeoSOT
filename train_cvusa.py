@@ -1,0 +1,494 @@
+import os
+import time
+import math
+import shutil
+import sys
+import torch
+import pickle
+from dataclasses import dataclass
+from torch.cuda.amp import GradScaler
+from torch.utils.data import DataLoader
+from transformers import get_constant_schedule_with_warmup, get_polynomial_decay_schedule_with_warmup, get_cosine_schedule_with_warmup
+
+from geosot.dataset.cvusa import CVUSADatasetEval, CVUSADatasetTrain
+from geosot.transforms import get_transforms_train, get_transforms_val
+from geosot.utils import EarlyStopping, get_parameter_groups, setup_system, Logger
+from geosot.trainer import train
+from geosot.evaluate.cvusa_and_cvact import evaluate, calc_sim
+from geosot.loss import InfoNCE
+from geosot.GeoSOT_c import GeoSOT
+
+
+@dataclass
+class Configuration:
+    
+    # Model
+    model: str = 'convnext_base.fb_in22k_ft_in1k_384' 
+    
+    # Override model image size
+    img_size: int = 384
+    
+    # Training 
+    mixed_precision: bool = True
+    seed = 42
+    epochs: int = 100
+    batch_size: int = 64  
+    gradient_accumulation_steps: int = 2
+    verbose: bool = True
+    gpu_ids: tuple = (0,)   # GPU ids for training
+    
+    
+    # Similarity Sampling
+    custom_sampling: bool = True
+    gps_sample: bool = True
+    sim_sample: bool = True
+    neighbour_select: int = 64
+    neighbour_range: int = 128
+    gps_dict_path: str = "./data/CVUSA/gps_dict.pkl"
+ 
+    # Eval
+    batch_size_eval: int = 32
+    eval_every_n_epoch: int = 4        # eval every n Epoch
+    normalize_features: bool = True
+
+    # Optimizer 
+    clip_grad = 1.0                   # None | float
+    decay_exclue_bias: bool = False
+    grad_checkpointing: bool = True   # Gradient Checkpointing
+    
+    # Loss
+    label_smoothing: float = 0.1
+    weight_decay = 0.05
+    layer_decay: float = 0.8
+    
+    # Learning Rate
+    lr: float = 2e-4
+    scheduler: str = "cosine"
+    warmup_epochs: int = 2
+    lr_end: float = 1e-6          #  only for "polynomial"
+    
+    # Dataset
+    data_folder = "/app/data/CVUSA"
+    
+    # Augment Images
+    prob_rotate: float = 0.75
+    prob_flip: float = 0.5
+    
+    # Savepath for model checkpoints
+    model_path: str = "./cvusa"
+    
+    # Eval before training
+    zero_shot: bool = False 
+    
+    # Checkpoint to start from
+    checkpoint_start = None 
+    early_stopping_patience: int = 5  
+  
+    # set num_workers to 0 if on Windows
+    num_workers: int = 8
+    
+    # train on GPU if available
+    device: str = 'cuda' if torch.cuda.is_available() else 'cpu' 
+    
+    # for better performance
+    cudnn_benchmark: bool = True
+    
+    # make cudnn deterministic
+    cudnn_deterministic: bool = False
+
+
+#-----------------------------------------------------------------------------#
+# Train Config                                                                #
+#-----------------------------------------------------------------------------#
+
+config = Configuration() 
+
+
+if __name__ == '__main__':
+
+
+    model_path = "{}/{}/{}".format(config.model_path,
+                                   config.model,
+                                   time.strftime("%H%M%S"))
+
+    if not os.path.exists(model_path):
+        os.makedirs(model_path)
+    shutil.copyfile(os.path.basename(__file__), "{}/train.py".format(model_path))
+
+    # Redirect print to both console and log file
+    sys.stdout = Logger(os.path.join(model_path, 'log.txt'))
+
+    setup_system(seed=config.seed,
+                 cudnn_benchmark=config.cudnn_benchmark,
+                 cudnn_deterministic=config.cudnn_deterministic)
+        
+    early_stopping = EarlyStopping(
+        patience=config.early_stopping_patience,
+        verbose=True
+    )
+
+    #-----------------------------------------------------------------------------#
+    # Model                                                                       #
+    #-----------------------------------------------------------------------------#
+        
+    print("\nModel: {}".format(config.model))
+
+
+    model = GeoSOT(model_path=config.model, img_size=config.img_size)
+    model.logit_scale = torch.nn.Parameter(torch.ones([]) * math.log(1 / 0.07))
+                          
+    data_config = model.get_config()
+    print(data_config)
+    mean = data_config["mean"]
+    std = data_config["std"]
+    img_size = config.img_size
+    
+    image_size_sat = (img_size, img_size)
+    
+    new_width = config.img_size * 2    
+    new_hight = round((224 / 1232) * new_width)
+    img_size_ground = (new_hight, new_width)
+    
+    # Activate gradient checkpointing
+    if config.grad_checkpointing:
+        model.set_grad_checkpointing(True)
+     
+    # Load pretrained Checkpoint    
+    if config.checkpoint_start is not None:  
+        print("Start from:", config.checkpoint_start)
+        model_state_dict = torch.load(config.checkpoint_start)  
+        model.load_state_dict(model_state_dict, strict=False)     
+
+    # Data parallel
+    print("GPUs available:", torch.cuda.device_count())  
+    if torch.cuda.device_count() > 1 and len(config.gpu_ids) > 1:
+        model = torch.nn.DataParallel(model, device_ids=config.gpu_ids)
+            
+    # Model to device   
+    model = model.to(config.device)
+
+    print("\nImage Size Sat:", image_size_sat)
+    print("Image Size Ground:", img_size_ground)
+    print("Mean: {}".format(mean))
+    print("Std:  {}\n".format(std)) 
+
+
+    #-----------------------------------------------------------------------------#
+    # DataLoader                                                                  #
+    #-----------------------------------------------------------------------------#
+
+    # Transforms
+    sat_geom_train, ground_geom_train, rgb_color_train = get_transforms_train(image_size_sat,
+                                                                   img_size_ground,
+                                                                   mean=mean,
+                                                                   std=std,
+                                                                   )
+                                                                   
+                                                                   
+    # Train
+    train_dataset = CVUSADatasetTrain(data_folder=config.data_folder ,
+                                      transforms_query_geometric=ground_geom_train,
+                                      transforms_reference_geometric=sat_geom_train,
+                                      transforms_rgb=rgb_color_train,
+                                      prob_flip=config.prob_flip,
+                                      prob_rotate=config.prob_rotate,
+                                      shuffle_batch_size=config.batch_size
+                                      )
+    
+    
+    train_dataloader = DataLoader(train_dataset,
+                                  batch_size=config.batch_size,
+                                  num_workers=config.num_workers,
+                                  shuffle=not config.custom_sampling,
+                                  pin_memory=False)
+    
+    
+    # Eval
+    sat_geom_val, ground_geom_val, rgb_final_val = get_transforms_val(image_size_sat,
+                                                               img_size_ground,
+                                                               mean=mean,
+                                                               std=std,
+                                                               )
+
+
+    # Reference Satellite Images
+    reference_dataset_test = CVUSADatasetEval(data_folder=config.data_folder ,
+                                              split="test",
+                                              img_type="reference",
+                                              transforms_geometric=sat_geom_val, 
+                                              transforms_rgb=rgb_final_val
+                                              )
+    
+    reference_dataloader_test = DataLoader(reference_dataset_test,
+                                           batch_size=config.batch_size_eval,
+                                           num_workers=config.num_workers,
+                                           shuffle=False,
+                                           pin_memory=False)
+    
+    
+    
+    # Query Ground Images Test
+    query_dataset_test = CVUSADatasetEval(data_folder=config.data_folder ,
+                                          split="test",
+                                          img_type="query",    
+                                          transforms_geometric=ground_geom_val, 
+                                          transforms_rgb=rgb_final_val
+                                          )
+    
+    query_dataloader_test = DataLoader(query_dataset_test,
+                                       batch_size=config.batch_size_eval,
+                                       num_workers=config.num_workers,
+                                       shuffle=False,
+                                       pin_memory=False)
+    
+    
+    print("Reference Images Test:", len(reference_dataset_test))
+    print("Query Images Test:", len(query_dataset_test))
+    
+    
+    #-----------------------------------------------------------------------------#
+    # GPS Sample                                                                  #
+    #-----------------------------------------------------------------------------#
+    if config.gps_sample:
+        with open(config.gps_dict_path, "rb") as f:
+            sim_dict = pickle.load(f)
+    else:
+        sim_dict = None
+
+    #-----------------------------------------------------------------------------#
+    # Sim Sample                                                                  #
+    #-----------------------------------------------------------------------------#
+    
+    if config.sim_sample:
+    
+        # Query Ground Images Train for simsampling
+        query_dataset_train = CVUSADatasetEval(data_folder=config.data_folder ,
+                                               split="train",
+                                               img_type="query",   
+                                               transforms_geometric=ground_geom_val,
+                                               transforms_rgb=rgb_final_val,
+                                               )
+            
+        query_dataloader_train = DataLoader(query_dataset_train,
+                                            batch_size=config.batch_size_eval,
+                                            num_workers=config.num_workers,
+                                            shuffle=False,
+                                            pin_memory=False)
+        
+        
+        reference_dataset_train = CVUSADatasetEval(data_folder=config.data_folder ,
+                                                   split="train",
+                                                   img_type="reference", 
+                                                   transforms_geometric=sat_geom_val,
+                                                   transforms_rgb=rgb_final_val,
+                                                   )
+        
+        reference_dataloader_train = DataLoader(reference_dataset_train,
+                                                batch_size=config.batch_size_eval,
+                                                num_workers=config.num_workers,
+                                                shuffle=False,
+                                                pin_memory=False)
+
+
+        print("\nReference Images Train:", len(reference_dataset_train))
+        print("Query Images Train:", len(query_dataset_train))        
+
+    
+    #-----------------------------------------------------------------------------#
+    # Loss                                                                        #
+    #-----------------------------------------------------------------------------#
+
+    loss_fn = torch.nn.CrossEntropyLoss(label_smoothing=config.label_smoothing)
+    loss_function = InfoNCE(loss_function=loss_fn,
+                            device=config.device,
+                            )
+
+
+    if config.mixed_precision:
+        scaler = GradScaler(init_scale=2.**10)
+    else:
+        scaler = None
+        
+    #-----------------------------------------------------------------------------#
+    # optimizer                                                                   #
+    #-----------------------------------------------------------------------------#
+
+    if config.layer_decay < 1.0:
+        print(f"\nUsing Layer-wise Learning Rate Decay with decay rate: {config.layer_decay}")
+        optimizer_parameters = get_parameter_groups(
+            model, 
+            weight_decay=config.weight_decay, 
+            skip_list=("bias", "LayerNorm.bias", "norm.bias", "norm.weight"),
+            base_lr=config.lr,
+            layer_decay=config.layer_decay
+        )
+        optimizer = torch.optim.AdamW(optimizer_parameters, lr=config.lr)
+        
+    elif config.decay_exclue_bias:
+        param_optimizer = list(model.named_parameters())
+        no_decay = ["bias", "LayerNorm.bias"]
+        optimizer_parameters = [
+            {
+                "params": [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
+                "weight_decay": config.weight_decay,
+            },
+            {
+                "params": [p for n, p in param_optimizer if any(nd in n for nd in no_decay)],
+                "weight_decay": 0.0,
+            },
+        ]
+        optimizer = torch.optim.AdamW(optimizer_parameters, lr=config.lr)
+    else:
+        optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr)
+
+
+    #-----------------------------------------------------------------------------#
+    # Scheduler                                                                   #
+    #-----------------------------------------------------------------------------#
+
+    train_steps = len(train_dataloader) // config.gradient_accumulation_steps * config.epochs
+    warmup_steps = len(train_dataloader) // config.gradient_accumulation_steps * config.warmup_epochs
+       
+    if config.scheduler == "polynomial":
+        print("\nScheduler: polynomial - max LR: {} - end LR: {}".format(config.lr, config.lr_end))  
+        scheduler = get_polynomial_decay_schedule_with_warmup(optimizer,
+                                                              num_training_steps=train_steps,
+                                                              lr_end = config.lr_end,
+                                                              power=1.5,
+                                                              num_warmup_steps=warmup_steps)
+        
+    elif config.scheduler == "cosine":
+        print("\nScheduler: cosine - max LR: {}".format(config.lr))   
+        scheduler = get_cosine_schedule_with_warmup(optimizer,
+                                                    num_training_steps=train_steps,
+                                                    num_warmup_steps=warmup_steps)
+        
+    elif config.scheduler == "constant":
+        print("\nScheduler: constant - max LR: {}".format(config.lr))   
+        scheduler =  get_constant_schedule_with_warmup(optimizer,
+                                                       num_warmup_steps=warmup_steps)
+           
+    else:
+        scheduler = None
+        
+    print("Warmup Epochs: {} - Warmup Steps: {}".format(str(config.warmup_epochs).ljust(2), warmup_steps))
+    print("Train Epochs:  {} - Train Steps:  {}".format(config.epochs, train_steps))
+        
+        
+    #-----------------------------------------------------------------------------#
+    # Zero Shot                                                                   #
+    #-----------------------------------------------------------------------------#
+    if config.zero_shot:
+        print("\n{}[{}]{}".format(30*"-", "Zero Shot", 30*"-"))  
+
+      
+        r1_test = evaluate(config=config,
+                           model=model,
+                           reference_dataloader=reference_dataloader_test,
+                           query_dataloader=query_dataloader_test, 
+                           ranks=[1, 5, 10],
+                           step_size=1000,
+                           cleanup=True)
+        
+        if config.sim_sample:
+            r1_train, sim_dict = calc_sim(config=config,
+                                          model=model,
+                                          reference_dataloader=reference_dataloader_train,
+                                          query_dataloader=query_dataloader_train, 
+                                          ranks=[1, 5, 10],
+                                          step_size=1000,
+                                          cleanup=True)
+                
+    #-----------------------------------------------------------------------------#
+    # Shuffle                                                                     #
+    #-----------------------------------------------------------------------------#            
+    if config.custom_sampling:
+        train_dataloader.dataset.shuffle(sim_dict,
+                                         neighbour_select=config.neighbour_select,
+                                         neighbour_range=config.neighbour_range)
+            
+    #-----------------------------------------------------------------------------#
+    # Train                                                                       #
+    #-----------------------------------------------------------------------------#
+    start_epoch = 1   
+    best_score = 0
+    
+
+    for epoch in range(start_epoch, config.epochs+1):
+        
+        print("\n{}[Epoch: {}]{}".format(30*"-", epoch, 30*"-"))
+        
+
+        train_loss = train(config,
+                           model,
+                           dataloader=train_dataloader,
+                           loss_function=loss_function,
+                           optimizer=optimizer,
+                           scheduler=scheduler,
+                           scaler=scaler)
+        
+        print("Epoch: {}, Train Loss = {:.3f}, Lr = {:.6f}".format(epoch,
+                                                                   train_loss,
+                                                                   optimizer.param_groups[-1]['lr']))
+        
+        # evaluate
+        if (epoch % config.eval_every_n_epoch == 0 and epoch != 0) or epoch == config.epochs:
+        
+            print("\n{}[{}]{}".format(30*"-", "Evaluate", 30*"-"))
+        
+            r1_test = evaluate(config=config,
+                               model=model,
+                               reference_dataloader=reference_dataloader_test,
+                               query_dataloader=query_dataloader_test, 
+                               ranks=[1, 5, 10],
+                               step_size=1000,
+                               cleanup=True)
+            
+            if config.sim_sample:
+                r1_train, sim_dict = calc_sim(config=config,
+                                              model=model,
+                                              reference_dataloader=reference_dataloader_train,
+                                              query_dataloader=query_dataloader_train, 
+                                              ranks=[1, 5, 10],
+                                              step_size=1000,
+                                              cleanup=True)
+
+            is_best = early_stopping(r1_test)
+
+            if is_best:
+                print(f"New best score: {r1_test:.4f}. Saving model for epoch {epoch}...")
+                checkpoint = {
+                    'epoch': epoch,
+                    'model_state_dict': model.module.state_dict() if isinstance(model, torch.nn.DataParallel) else model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
+                    'best_score': early_stopping.best_score,
+                }
+                save_path = '{}/weights_e{}_{:.4f}.pth'.format(model_path, epoch, r1_test)
+                torch.save(checkpoint, save_path)
+                
+            if early_stopping.early_stop:
+                print("Early stopping triggered. Halting training.")
+                break  # 退出训练循环
+
+            # if r1_test > best_score:
+
+            #     best_score = r1_test
+
+            #     if torch.cuda.device_count() > 1 and len(config.gpu_ids) > 1:
+            #         torch.save(model.module.state_dict(), '{}/weights_e{}_{:.4f}.pth'.format(model_path, epoch, r1_test))
+            #     else:
+            #         torch.save(model.state_dict(), '{}/weights_e{}_{:.4f}.pth'.format(model_path, epoch, r1_test))
+                
+
+        if config.custom_sampling:
+            train_dataloader.dataset.shuffle(sim_dict,
+                                             neighbour_select=config.neighbour_select,
+                                             neighbour_range=config.neighbour_range)
+                
+    if early_stopping.best_score is not None:
+        print(f"Best validation score achieved: {early_stopping.best_score:.4f}")
+    # if torch.cuda.device_count() > 1 and len(config.gpu_ids) > 1:
+    #     torch.save(model.module.state_dict(), '{}/weights_end.pth'.format(model_path))
+    # else:
+    #     torch.save(model.state_dict(), '{}/weights_end.pth'.format(model_path))            
