@@ -35,7 +35,7 @@ class geoSOT(nn.Module):
             norm_first=True
         )
 
-        self.dustbin_cost = nn.Parameter(torch.tensor(0.0))
+        self.dustbin_cost = nn.Parameter(torch.tensor(1.0))
 
     def _get_pos_embed(self, H_tgt, W_tgt):
         if H_tgt == self.pos_embed.shape[2] and W_tgt == self.pos_embed.shape[3]:
