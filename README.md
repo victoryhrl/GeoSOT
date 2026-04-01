@@ -105,14 +105,13 @@ We provide dedicated evaluation scripts to evaluate models on respective dataset
 ### CVUSA Evaluation
 
 ```bash
-python eval_cvusa_fusion.py
+python eval_cvusa.py
 ```
 
 ### CVACT Evaluation
 
 ```bash
-python eval_cvact_fusion.py
-python eval_cvact_test.py
+python eval_cvact.py
 ```
 
 ### VIGOR Evaluation
@@ -124,22 +123,7 @@ python eval_vigor_same.py
 python eval_vigor_cross.py
 ```
 
-*Note: Evaluation includes coarse global retrieval and the uncertainty-guided geometric re-ranking phase.*
-
----
-
-## 🔍 Visualization Tools
-
-To visualize cross-view correspondences, spatial alignments, and qualitative retrieval results, we provide several visualization scripts:
-
-- `visualize_retrieval_cvusa.py`: Generates the top-$K$ retrieval grid visualizations.
-- `plot_localization.py`: Projects coordinate predictions onto satellite maps.
-- `visualize_scot.py` / `visualize_scot_paper.py`: Visualizes the explicit Sinkhorn-Knopp region-level transport matching (matching patch grids).
-- `plot_transport_matrix.py`: Plots heatmaps demonstrating the learned optimal transport plan and the dustbin mechanism.
-
-```bash
-python visualize_retrieval_cvusa.py
-```
+*Note: Evaluation includes coarse global retrieval and the uncertainty-guided geometric re-ranking phase.
 
 ---
 
