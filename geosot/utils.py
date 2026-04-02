@@ -118,10 +118,10 @@ class EarlyStopping:
     def __init__(self, patience=7, verbose=True, delta=0, trace_func=print):
         """
         Args:
-            patience (int): 容忍性能不提升的评估周期数。
-            verbose (bool): 是否打印状态信息。
-            delta (float): 视为性能提升的最小变化量。
-            trace_func (function): 打印函数。
+            patience (int): Number of evaluation cycles to tolerate no performance improvement.
+            verbose (bool): Whether to print status information.
+            delta (float): Minimum change to qualify as an improvement.
+            trace_func (function): Print function.
         """
         self.patience = patience
         self.verbose = verbose
@@ -133,10 +133,10 @@ class EarlyStopping:
 
     def __call__(self, val_score):
         """
-        用新的验证分数调用此对象。
+        Call this object with the new validation score.
 
         Returns:
-            bool: 如果分数是新的最佳分数，返回 True。
+            bool: Return True if the score is the new best score.
         """
         score = val_score
         is_best = False

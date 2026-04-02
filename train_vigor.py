@@ -420,17 +420,17 @@ if __name__ == '__main__':
             print("=> Resuming from checkpoint '{}'".format(config.checkpoint_start))
             checkpoint = torch.load(config.checkpoint_start, map_location=config.device, weights_only=False)
 
-            # 1. 恢复起始 Epoch
+            # 1. Restore starting Epoch
             start_epoch = checkpoint['epoch'] + 1
 
-            # 2. 恢复模型权重
-            #    需要处理 DataParallel 可能添加的 'module.' 前缀
+            # 2. Restore model weights
+            #    Need to handle 'module.' prefix potentially added by DataParallel
             model_state_dict = checkpoint['model_state_dict']
             is_data_parallel_checkpoint = all(k.startswith('module.') for k in model_state_dict)
             is_currently_data_parallel = isinstance(model, torch.nn.DataParallel)
 
             if is_data_parallel_checkpoint and not is_currently_data_parallel:
-                # 如果检查点是多卡保存，但当前是单卡加载，则移除前缀
+                # If checkpoint is saved with multi-GPU but currently loaded with single-GPU, remove prefix
                 from collections import OrderedDict
 
                 new_state_dict = OrderedDict()
@@ -447,13 +447,13 @@ if __name__ == '__main__':
                     new_state_dict[name] = v
                 model.load_state_dict(new_state_dict)
             else:
-                # 状态一致，直接加载
+                # State is consistent, load directly
                 model.load_state_dict(model_state_dict)
 
-            # 3. 恢复优化器状态
+            # 3. Restore optimizer state
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
-            # 4. 恢复调度器状态
+            # 4. Restore scheduler state
             if scheduler and 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict'] is not None:
                 scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
             early_stopping.best_score = checkpoint.get('best_score', None)
@@ -544,7 +544,7 @@ if __name__ == '__main__':
 
             if early_stopping.early_stop:
                 print("Early stopping triggered. Halting training.")
-                break  # 退出训练循环
+                break  # Exit training loop
             # if r1_test > best_score:
 
             #     best_score = r1_test

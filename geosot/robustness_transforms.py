@@ -5,7 +5,7 @@ from PIL import Image
 from torchvision import transforms
 
 class JPEGCompression:
-    """一个模拟JPEG压缩伪影的transform"""
+    """A transform simulating JPEG compression artifacts"""
     def __init__(self, quality_min=30, quality_max=70):
         assert 0 < quality_min <= quality_max <= 100
         self.quality_min = quality_min
@@ -20,7 +20,7 @@ class JPEGCompression:
         return img_jpeg
 
 class AddGaussianNoise:
-    """一个添加高斯噪声的transform"""
+    """A transform adding Gaussian noise"""
     def __init__(self, mean=0., std_min=1, std_max=10):
         self.mean = mean
         self.std_min = std_min
@@ -58,8 +58,8 @@ def get_rain_transform():
 
 def get_snow_transform():
     """
-    获取一个下雪效果的变换。
-    我们直接使用 albumentations 官方的 A.RandomSnow 类。
+    Get a snow effect transform.
+    We directly use the official A.RandomSnow class from albumentations.
     """
     return A.RandomSnow(
         p=1.0,

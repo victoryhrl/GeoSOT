@@ -75,7 +75,7 @@ if __name__ == '__main__':
         print("Start from:", config.checkpoint_start)
         checkpoint = torch.load(config.checkpoint_start, map_location=config.device, weights_only=False)
         
-        # 从字典中提取 model_state_dict
+        # Extract model_state_dict from dictionary
         model_state_dict = checkpoint['model_state_dict']
         model.load_state_dict(model_state_dict, strict=False)     
 

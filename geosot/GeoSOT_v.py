@@ -70,7 +70,7 @@ class geoSOT(nn.Module):
         sim_matrix = torch.bmm(feat_g_norm, feat_s_norm.transpose(1, 2))
         cost_matrix = 1.0 - sim_matrix 
 
-        5. Dustbin Expansion
+        # 5. Dustbin Expansion
         bin_val = F.softplus(self.dustbin_cost)
         
         bin_col = bin_val.view(1, 1, 1).expand(B, Ng, 1)
@@ -82,7 +82,7 @@ class geoSOT(nn.Module):
 
         expanded_cost = torch.cat([cost_with_col, bin_row], dim=1)
 
-        # 6. FP32 Sinkhorn (防止数值崩溃)
+        # 6. FP32 Sinkhorn (Prevent numerical collapse)
         orig_dtype = expanded_cost.dtype
         expanded_cost_fp32 = expanded_cost.float()
         
@@ -109,7 +109,6 @@ class GeoSOT(nn.Module):
         super(GeoSOT, self).__init__()
         self.img_size = img_size
         self.model_name = 'convnext_base.fb_in22k_ft_in1k_384'
-        # self.model_name = 'convnext_base.dinov3_lvd1689m'
         
         self.model_rgb = timm.create_model(self.model_name, pretrained=True)
         self.model_phase = timm.create_model(self.model_name, pretrained=True)

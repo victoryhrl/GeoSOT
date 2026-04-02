@@ -353,7 +353,7 @@ class CVUSADatasetEval(Dataset):
             img = transformed_rgb['image']
             replay_params = transformed_rgb['replay']
                 
-            # # 对 Phase 重放变换
+            # # Replay transform on Phase
             transformed_phase = A.ReplayCompose.replay(replay_params, image=img_phase)
             img_phase = transformed_phase['image']
 

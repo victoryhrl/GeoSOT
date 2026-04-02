@@ -78,7 +78,7 @@ class geoSOT(nn.Module):
 
         expanded_cost = torch.cat([cost_with_col, bin_row], dim=1)
 
-        # 6. FP32 Sinkhorn (防止数值崩溃)
+        # 6. FP32 Sinkhorn (Prevent numerical collapse)
         orig_dtype = expanded_cost.dtype
         expanded_cost_fp32 = expanded_cost.float()
 
@@ -152,7 +152,7 @@ class GeoSOT(nn.Module):
             pool_rgb_ref = self.model_rgb.forward_head(raw_rgb_feat_ref)
             pool_phase_ref = self.model_phase.forward_head(raw_phase_feat_ref)
 
-            # 2. GeoSOT: 用原始特征（断开循环依赖）
+            # 2. GeoSOT: Use original features (break cyclic dependency)
             feat_q_full = torch.cat([raw_rgb_feat_q, raw_phase_feat_q], dim=1)
             feat_ref_full = torch.cat([raw_rgb_feat_ref, raw_phase_feat_ref], dim=1)
 

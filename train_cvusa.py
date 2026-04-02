@@ -469,7 +469,7 @@ if __name__ == '__main__':
                 
             if early_stopping.early_stop:
                 print("Early stopping triggered. Halting training.")
-                break  # 退出训练循环
+                break  # Exit training loop
 
             # if r1_test > best_score:
 

@@ -16,7 +16,7 @@ class TimmModel(nn.Module):
 
         self.img_size = img_size
 
-        # 1. 创建主干网络
+        # 1. Create backbone network
         if "vit" in model_name:
             self.model_rgb = timm.create_model(model_name, pretrained=pretrained, num_classes=0, img_size=img_size)
         else:
@@ -25,20 +25,20 @@ class TimmModel(nn.Module):
         self.model_phase = timm.create_model(model_name, pretrained=False, num_classes=0)
         self.model_phase.load_state_dict(self.model_rgb.state_dict())
 
-        # 2. 动态获取特征维度，用于构建融合层
+        # 2. Dynamically get feature dimension for building fusion layer
         with torch.no_grad():
             dummy_input = torch.randn(1, 3, img_size, img_size)
             feature_dim = self.model_rgb(dummy_input).shape[-1]
 
-        # 3. 构建投影融合层 (唯一的融合方式)
+        # 3. Build projection fusion layer (the only fusion method)
         self.fusion_layer = nn.Sequential(
             nn.Linear(feature_dim * 2, feature_dim * 2),
-            nn.BatchNorm1d(feature_dim * 2),  # BatchNorm 有助于稳定训练
+            nn.BatchNorm1d(feature_dim * 2),  # BatchNorm helps stabilize training
             nn.ReLU(),
             nn.Linear(feature_dim * 2, feature_dim)
         )
 
-        # 4. 温度参数
+        # 4. Temperature parameter
         self.logit_scale = torch.nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
     def get_config(self, ):

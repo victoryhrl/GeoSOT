@@ -110,33 +110,33 @@ class VigorDatasetTrain(Dataset):
         self.to_tensor = T.ToTensor()
 
     def phase_img_getter(self, img):
-        """生成相位图像（适配通道优先）"""
-        # 输入处理
+        """Generate phase image (adapt to channel first)"""
+        # Input processing
         if isinstance(img, torch.Tensor):
-            img_np = img.permute(1, 2, 0).numpy()  # 从 (C, H, W) 转为 (H, W, C)
+            img_np = img.permute(1, 2, 0).numpy()  # Convert from (C, H, W) to (H, W, C)
         else:
-            img_np = np.array(img)  # PIL.Image的shape是 (H, W, C)
+            img_np = np.array(img)  # Shape of PIL.Image is (H, W, C)
 
-        # 计算FFT相位
-        img_fft = np.fft.fft2(img_np, axes=(0, 1))  # 在空间维度计算FFT
-        img_pha = np.angle(img_fft)  # 形状 (H, W, C)
+        # Calculate FFT phase
+        img_fft = np.fft.fft2(img_np, axes=(0, 1))  # Calculate FFT in spatial dimension
+        img_pha = np.angle(img_fft)  # Shape (H, W, C)
 
-        # 调整img_pha为通道优先 (C, H, W)
-        img_pha = np.transpose(img_pha, (2, 0, 1))  # 新形状 (3, H, W)
+        # Adjust img_pha to channel first (C, H, W)
+        img_pha = np.transpose(img_pha, (2, 0, 1))  # New shape (3, H, W)
 
-        # 缩放因子形状 (3, 1, 1) [C, H, W]
+        # Scale factor shape (3, 1, 1) [C, H, W]
         scale_factor = np.array([50000, 50000, 50000]).reshape(3, 1, 1)
 
-        # 计算相位图像
-        phase_img = scale_factor * (np.e ** (1j * img_pha))  # 广播成功
-        phase_img = np.real(np.fft.ifft2(phase_img, axes=(1, 2)))  # 在H,W维度反变换
+        # Calculate phase image
+        phase_img = scale_factor * (np.e ** (1j * img_pha))  # Broadcast successful
+        phase_img = np.real(np.fft.ifft2(phase_img, axes=(1, 2)))  # Inverse transform in H,W dimensions
 
-        # 调整回通道最后并转换为PIL图像
+        # Adjust back to channel last and convert to PIL image
         phase_img = np.transpose(phase_img, (1, 2, 0))  # (H, W, C)
         phase_img = np.clip(phase_img, 0, 255).astype(np.uint8)
         phase_img = Image.fromarray(phase_img)
 
-        # 转换为张量 (C, H, W)
+        # Convert to tensor (C, H, W)
         phase_img = self.to_tensor(phase_img)
         return phase_img
 
@@ -179,9 +179,9 @@ class VigorDatasetTrain(Dataset):
         img_gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
 
         img_fft = np.fft.fft2(img_gray)
-        img_pha = np.angle(img_fft)  # 形状 (H, W), 范围 [-pi, pi]
+        img_pha = np.angle(img_fft)  # Shape (H, W), Range [-pi, pi]
         
-        phase_map = (img_pha + np.pi) / (2 * np.pi)  # 形状 (H, W), 范围 [0, 1]
+        phase_map = (img_pha + np.pi) / (2 * np.pi)  # Shape (H, W), Range [0, 1]
         
         phase_map_3channel = np.stack([phase_map] * 3, axis=-1)
         return phase_map_3channel.astype(np.float32)
@@ -531,33 +531,33 @@ class VigorDatasetEval(Dataset):
             raise ValueError("Invalid 'img_type' parameter. 'img_type' must be 'query' or 'reference'")
 
     def phase_img_getter(self, img):
-        """生成相位图像（适配通道优先）"""
-        # 输入处理
+        """Generate phase image (adapt to channel first)"""
+        # Input processing
         if isinstance(img, torch.Tensor):
-            img_np = img.permute(1, 2, 0).numpy()  # 从 (C, H, W) 转为 (H, W, C)
+            img_np = img.permute(1, 2, 0).numpy()  # Convert from (C, H, W) to (H, W, C)
         else:
-            img_np = np.array(img)  # PIL.Image的shape是 (H, W, C)
+            img_np = np.array(img)  # Shape of PIL.Image is (H, W, C)
 
-        # 计算FFT相位
-        img_fft = np.fft.fft2(img_np, axes=(0, 1))  # 在空间维度计算FFT
-        img_pha = np.angle(img_fft)  # 形状 (H, W, C)
+        # Calculate FFT phase
+        img_fft = np.fft.fft2(img_np, axes=(0, 1))  # Calculate FFT in spatial dimension
+        img_pha = np.angle(img_fft)  # Shape (H, W, C)
 
-        # 调整img_pha为通道优先 (C, H, W)
-        img_pha = np.transpose(img_pha, (2, 0, 1))  # 新形状 (3, H, W)
+        # Adjust img_pha to channel first (C, H, W)
+        img_pha = np.transpose(img_pha, (2, 0, 1))  # New shape (3, H, W)
 
-        # 缩放因子形状 (3, 1, 1) [C, H, W]
+        # Scale factor shape (3, 1, 1) [C, H, W]
         scale_factor = np.array([50000, 50000, 50000]).reshape(3, 1, 1)
 
-        # 计算相位图像
-        phase_img = scale_factor * (np.e ** (1j * img_pha))  # 广播成功
-        phase_img = np.real(np.fft.ifft2(phase_img, axes=(1, 2)))  # 在H,W维度反变换
+        # Calculate phase image
+        phase_img = scale_factor * (np.e ** (1j * img_pha))  # Broadcast successful
+        phase_img = np.real(np.fft.ifft2(phase_img, axes=(1, 2)))  # Inverse transform in H,W dimensions
 
-        # 调整回通道最后并转换为PIL图像
+        # Adjust back to channel last and convert to PIL image
         phase_img = np.transpose(phase_img, (1, 2, 0))  # (H, W, C)
         phase_img = np.clip(phase_img, 0, 255).astype(np.uint8)
         phase_img = Image.fromarray(phase_img)
 
-        # 转换为张量 (C, H, W)
+        # Convert to tensor (C, H, W)
         phase_img = self.to_tensor(phase_img)
         return phase_img
     
@@ -593,7 +593,7 @@ class VigorDatasetEval(Dataset):
 
     def phase_angle(self, img):
         """
-        直接将相位角作为特征输入，通过线性映射和通道复制。
+        Directly input phase angle as features through linear mapping and channel duplication.
         """
         if isinstance(img, torch.Tensor):
             img_np = img.permute(1, 2, 0).numpy()
@@ -603,9 +603,9 @@ class VigorDatasetEval(Dataset):
         img_gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
 
         img_fft = np.fft.fft2(img_gray)
-        img_pha = np.angle(img_fft)  # 形状 (H, W), 范围 [-pi, pi]
+        img_pha = np.angle(img_fft)  # Shape (H, W), Range [-pi, pi]
         
-        phase_map = (img_pha + np.pi) / (2 * np.pi)  # 形状 (H, W), 范围 [0, 1]
+        phase_map = (img_pha + np.pi) / (2 * np.pi)  # Shape (H, W), Range [0, 1]
         
         phase_map_3channel = np.stack([phase_map] * 3, axis=-1)
         return phase_map_3channel.astype(np.float32)
@@ -684,7 +684,7 @@ class VigorDatasetEval(Dataset):
                 img = transformed_rgb['image']
                 replay_params = transformed_rgb['replay']
                 
-                # 对 Phase 重放变换
+                # Replay transform on Phase
                 transformed_phase = A.ReplayCompose.replay(replay_params, image=img_phase)
                 img_phase = transformed_phase['image']
 

@@ -455,10 +455,10 @@ def calculate_scores(query_rgb_features, reference_rgb_features,
 
         end = start + step_size
 
-        # 计算 RGB 相似度
+        # Calculate RGB similarity
         sim_rgb_tmp = query_rgb_features[start:end] @ reference_rgb_features.T
 
-        # 计算 Phase 相似度
+        # Calculate phase similarity
         sim_phase_tmp = query_phase_features[start:end] @ reference_phase_features.T
 
         sim_fused_tmp = 0.6 * sim_rgb_tmp + 0.4 * sim_phase_tmp
