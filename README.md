@@ -6,6 +6,10 @@ This repository contains the official PyTorch implementation for the paper: **"G
 
 Cross-view geo-localization requires representations that match ground images to satellite references despite large changes in viewpoint and appearance. An image-level retrieval objective does not specify which regions support a match. GeoSOT learns cross-view representations through phase-guided local correspondence. Fourier phase provides structural cues alongside RGB appearance in the regional matching costs. Differentiable spatial optimal transport uses these costs to assign regions jointly, with a learnable dustbin for unmatched content. The aligned features provide a training signal for the retrieval encoders without requiring patch-level correspondence labels. On VIGOR, the contextual and aligned features are used to predict a Gaussian offset distribution. Its mean estimates the query position within a candidate reference, and its covariance helps re-rank candidates after global retrieval. We evaluate GeoSOT on CVUSA, CVACT, and VIGOR. It reaches 98.92% R@1 on CVUSA. On VIGOR, covariance-based refinement raises R@1 from 80.96% to 82.39% on Same-Area and from 66.34% to 68.30% on Cross-Area with the same ten candidates per query.
 
+## Architecture
+
+![GeoSOT architecture](assets/architecture.png)
+
 ---
 
 ## 🛠️ Installation & Requirements
