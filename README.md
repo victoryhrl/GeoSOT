@@ -4,29 +4,7 @@ This repository contains the official PyTorch implementation for the paper: **"G
 
 ## Abstract
 
-Cross-view geo-localization aims to match ground-level imagery
-against a geo-tagged satellite database, a task fundamentally
-challenged by the extreme viewpoint discrepancy between ground
-and overhead perspectives. While recent methods have achieved
-impressive retrieval performance, they predominantly rely on
-global pooling to produce compact descriptors, inherently
-discarding the spatial geometric arrangements that are critical
-under large viewpoint shifts. To address this, we propose GeoSOT,
-a geometry-aware cross-view matching framework that integrates
-frequency-domain structural priors with optimal transport-based
-spatial correspondence modeling. GeoSOT introduces three tightly
-integrated components: a Phase Extraction Module that provides
-view-robust geometric priors via the Fourier phase spectrum;
-a Geometry-Aware Spatial Optimal Transport module that explicitly
-establishes region-level spatial correspondences while suppressing
-unmatchable regions via a learnable dustbin mechanism; and a
-Probabilistic Regression Head that models localization uncertainty
-for precise coordinate prediction and uncertainty-guided geometric
-re-ranking at inference time. Extensive experiments on CVUSA,
-CVACT, and VIGOR demonstrate the effectiveness of GeoSOT, with
-particularly pronounced gains on the challenging VIGOR Cross-Area
-split, demonstrating that explicit spatial reasoning under large
-viewpoint discrepancies is key to robust cross-view geo-localization.
+Cross-view geo-localization requires representations that match ground images to satellite references despite large changes in viewpoint and appearance. An image-level retrieval objective does not specify which regions support a match. GeoSOT learns cross-view representations through phase-guided local correspondence. Fourier phase provides structural cues alongside RGB appearance in the regional matching costs. Differentiable spatial optimal transport uses these costs to assign regions jointly, with a learnable dustbin for unmatched content. The aligned features provide a training signal for the retrieval encoders without requiring patch-level correspondence labels. On VIGOR, the contextual and aligned features are used to predict a Gaussian offset distribution. Its mean estimates the query position within a candidate reference, and its covariance helps re-rank candidates after global retrieval. We evaluate GeoSOT on CVUSA, CVACT, and VIGOR. It reaches 98.92% R@1 on CVUSA. On VIGOR, covariance-based refinement raises R@1 from 80.96% to 82.39% on Same-Area and from 66.34% to 68.30% on Cross-Area with the same ten candidates per query.
 
 ---
 
